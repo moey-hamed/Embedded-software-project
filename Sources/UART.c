@@ -80,14 +80,14 @@ bool UART_Init(const uint32_t baudRate, const uint32_t moduleClk)
   //Set the baud rate fine 5 bits fine adjust value
   UART2_C4 |= UART_C4_BRFA_MASK & brfa;
 
-  UART2_C2 |= UART_C2_TIE_MASK;
-  UART2_C2 |= UART_C2_RIE_MASK;
+  UART2_C2 &= ~UART_C2_TIE_MASK;  //Transmission complete interrupt enable
+  UART2_C2 |= UART_C2_RIE_MASK;   //Enable RDRF interrupt
   
   UART2_C2 |= UART_C2_TE_MASK;		//Enables UART transmitter
   UART2_C2 |= UART_C2_RE_MASK;		//Enables UART receiver
 
-  NVICICPR1 = NVIC_ICPR_CLRPEND(1 << (49 % 32));
-  NVICISER1 = NVIC_ISER_SETENA(1 << (49 % 32));
+  NVICICPR1 = NVIC_ICPR_CLRPEND(1 << (49 % 32)); //clear any pending interrupts on UART2
+  NVICISER1 = NVIC_ISER_SETENA(1 << (49 % 32));  //Enable interrupt on UART2
   
   FIFO_Init(&RFIFOx); // Initialize receiver FIFO
   
@@ -139,13 +139,13 @@ bool UART_OutChar(const uint8_t data)
  {
    for (;;)
    {
-	 OS_SemaphoreWait(TransmitSemaphore, 0); // Wait for transmit semaphore to signal
-	 if (UART2_S1 & UART_S1_TDRE_MASK) // Clear TDRE flag by reading it
-	 {
-	   FIFO_Get(&TFIFOx,(uint8_t* )&UART2_D);
-	   UART2_C2 |= UART_C2_TIE_MASK; // Re-enable transmission interrupt
-	 }
-   }
+     OS_SemaphoreWait(TransmitSemaphore, 0); // Wait for transmit semaphore to signal
+	   if (UART2_S1 & UART_S1_TDRE_MASK) // Clear TDRE flag by reading it
+	   {
+	     FIFO_Get(&TFIFOx,(uint8_t* )&UART2_D);
+	     UART2_C2 |= UART_C2_TIE_MASK; // Re-enable transmission interrupt
+	   }
+    }
  }
  
 /*! @brief Thread that looks after receiving data.
@@ -166,7 +166,7 @@ static void ReceiveThread(void* pData)
 
  void __attribute__ ((interrupt)) UART_ISR(void)
 {
-  OS_ISREnter();
+  OS_ISREnter(); // To Begin OS_ISR to start servicing interrupts
 
   {
     UART2_C2 &= ~UART_C2_RIE_MASK; // Receive interrupt disabled
@@ -179,7 +179,7 @@ static void ReceiveThread(void* pData)
     OS_SemaphoreSignal(TransmitSemaphore); // Signal transmit thread
   }
 
-  OS_ISRExit();
+  OS_ISRExit(); // to end OS_ISR to finish servicing interrupts
 
 }
 
