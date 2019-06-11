@@ -1,11 +1,9 @@
 /*
  * @file
  *
- *  @Created on: 28/03/2019
  *  @brief: Packet module, This module contains the code for managing incoming and outgoing packets
- *  @Author: 12919508- Mohamed Hamed
- *  @Author: 99178434- Yupeng Guo
- *  @Date: 17/04/2019
+ *  @author: 12919508- Mohamed Hamed
+ *  @date: 17/04/2019
  */
 
 /****************************************HEADER FILES****************************************************/
@@ -17,7 +15,7 @@
 #include "Cpu.h"
 
 /****************************************GLOBAL VARS*****************************************************/
-uint8_t Packet_position = 0;
+uint8_t packet_position = 0;
 
 /****************************************PRIVATE FUNCTION DECLARATION***********************************/
 static bool IsChecksumValid(void);
@@ -35,43 +33,43 @@ bool Packet_Init(const uint32_t baudRate, const uint32_t moduleClk)
 bool Packet_Get(void)
 {
   EnterCritical();
-  uint8_t Data;
+  uint8_t data;
 
   //Checks whether there is data in the receive FIFO and stores it the address pointed by Data
-  if (UART_InChar(&Data))
-    {
-      switch(Packet_position)
+  if (UART_InChar(&data))
+  {
+      switch(packet_position)
       {
 	//Command
 	case 0:
-	  Packet_Command = Data;
-	  Packet_position++;
+	  Packet_Command = data;
+	  packet_position++;
 	  return false; //incomplete packet
 	  break;
 
 	//Parameter 1
 	case 1:
-	  Packet_Parameter1 = Data;
-	  Packet_position++;
+	  Packet_Parameter1 = data;
+	  packet_position++;
 	  return false; //incomplete packet
 	  break;
 
         //Parameter 2
 	case 2:
-	  Packet_Parameter2 = Data;
-	  Packet_position++;
+	  Packet_Parameter2 = data;
+	  packet_position++;
 	  return false; //incomplete packet
 	  break;
 
 	//Parameter 3
 	case 3:
-	  Packet_Parameter3 = Data;
-	  Packet_position++;
+	  Packet_Parameter3 = data;
+	  packet_position++;
 	  return false; //incomplete packet
 
 	//Checksum
 	case 4:
-	  Packet_Checksum = Data;
+	  Packet_Checksum = data;
 	  if(IsChecksumValid())
 	    {
 	      return true;
@@ -81,7 +79,7 @@ bool Packet_Get(void)
 	  return false;
 
 	default:
-	  Packet_position = 0;
+	  packet_position = 0;
 	  break;
       }
     }
