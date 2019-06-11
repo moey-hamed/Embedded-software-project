@@ -1,14 +1,11 @@
 /*! @file
  *
  *  @brief I/O routines for UART communications on the TWR-K70F120M.
- *
- * this contains UART initialisation , UART poll and UART I/O
+ *  this contains UART initialisation , UART poll and UART I/O
  *
  *  @author  12919508- Mohamed Hamed
- *  @author  99178434- Yupeng Guo
  *  @date 2019-03-28
  */
-
 
 /****************************************HEADER FILES****************************************************/
 #include "UART.h"
@@ -22,8 +19,8 @@
 /****************************************GLOBAL VARS*****************************************************/
 #define THREAD_STACK_SIZE 100
 
-TFIFO TFIFO1;
-TFIFO RFIFO1;
+TFIFO TFIFOx;
+TFIFO RFIFOx;
 
 // Prototypes
 static void ReceiveThread(void* pData);
@@ -55,8 +52,8 @@ bool UART_Init(const uint32_t baudRate, const uint32_t moduleClk)
 
   //Initialize the FIFO buffers for transform data
 
-  FIFO_Init(&TFIFO1);                //Initialize the Transmit FIFO
-  FIFO_Init(&RFIFO1);                //Initialize the Receive FIFO
+  FIFO_Init(&TFIFOx);                //Initialize the Transmit FIFO
+  FIFO_Init(&RFIFOx);                //Initialize the Receive FIFO
 
   //Baud rate generation(k70 pdf p.1973)
   //UART baud rate = UART module clock / (16  (SBR[12:0] + BRFD)
@@ -68,9 +65,9 @@ bool UART_Init(const uint32_t baudRate, const uint32_t moduleClk)
   sbr.l = ZF / 16;
 
   if (sbr.l > 8191)                  //The max value of 13-bit number is 8191
-    {
+  {
       return false;
-    }
+  }
 
   //Set the baud rate
 
@@ -92,9 +89,9 @@ bool UART_Init(const uint32_t baudRate, const uint32_t moduleClk)
   NVICICPR1 = NVIC_ICPR_CLRPEND(1 << (49 % 32));
   NVICISER1 = NVIC_ISER_SETENA(1 << (49 % 32));
   
-  FIFO_Init(&RFIFO1); // Initialize receiver FIFO
+  FIFO_Init(&RFIFOx); // Initialize receiver FIFO
   
-  FIFO_Init(&TFIFO1); // Initialize transmitter FIFO
+  FIFO_Init(&TFIFOx); // Initialize transmitter FIFO
 
   ReceiveSemaphore = OS_SemaphoreCreate(0); // Receive semaphore initialized to 0
   TransmitSemaphore = OS_SemaphoreCreate(0); // Transmit semaphore initialized to 0
@@ -115,7 +112,7 @@ bool UART_Init(const uint32_t baudRate, const uint32_t moduleClk)
 bool UART_InChar(uint8_t* const dataPtr)
 {
   //Get the data store in receive FIFO
-  return FIFO_Get(&RFIFO1, dataPtr);
+  return FIFO_Get(&RFIFOx, dataPtr);
 }
 
 
@@ -125,33 +122,13 @@ bool UART_OutChar(const uint8_t data)
   bool success;
   
   UART2_C2 &= ~UART_C2_TIE_MASK;
-  success = FIFO_Put(&TFIFO1, data);
+  success = FIFO_Put(&TFIFOx, data);
   UART2_C2 |= UART_C2_TIE_MASK;
   
   ExitCritical();
   //Place data to the transmit FIFO
   return success;
 }
-
-/*! @brief Poll the UART status register to try and receive and/or transmit one character.
- *
- *  @return void
- *  @note Assumes that UART_Init has been called.
- */
-//void UART_Poll(void)  //UART poll to be placed in the main loop
-//{
-//If TDRE is set, transmit data to the data register
-// if (UART2_S1 & UART_S1_TDRE_MASK)
-//  {
-//   FIFO_Get(&TFIFO1, (uint8_t *) &UART2_D);
-//  }
-
-//If RDRF is set, receive data from the data register
-// if (UART2_S1 & UART_S1_RDRF_MASK)
-// {
-//    FIFO_Put(&RFIFO1, UART2_D);
-// }
-//}
 
  /*! @brief Thread that looks after transmitting data.
   *
@@ -165,7 +142,7 @@ bool UART_OutChar(const uint8_t data)
 	 OS_SemaphoreWait(TransmitSemaphore, 0); // Wait for transmit semaphore to signal
 	 if (UART2_S1 & UART_S1_TDRE_MASK) // Clear TDRE flag by reading it
 	 {
-	   FIFO_Get(&TFIFO1,(uint8_t* )&UART2_D);
+	   FIFO_Get(&TFIFOx,(uint8_t* )&UART2_D);
 	   UART2_C2 |= UART_C2_TIE_MASK; // Re-enable transmission interrupt
 	 }
    }
@@ -181,7 +158,7 @@ static void ReceiveThread(void* pData)
   for (;;)
   {
     OS_SemaphoreWait(ReceiveSemaphore, 0); // Wait for receive semaphore to signal
-    FIFO_Put(&RFIFO1, UART2_D); // Put byte into RxFIFO
+    FIFO_Put(&RFIFOx, UART2_D); // Put byte into RxFIFO
     UART2_C2 |= UART_C2_RIE_MASK; // Re-enable receive interrupt
   }
 }

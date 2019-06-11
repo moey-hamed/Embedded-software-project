@@ -28,6 +28,11 @@
 
 // CPU module - contains low level hardware initialization routines
 #include "Cpu.h"
+#include "Events.h"
+#include "PE_Types.h"
+#include "PE_Error.h"
+#include "PE_Const.h"
+#include "IO_Map.h"
 
 // Simple OS
 #include "OS.h"
@@ -166,6 +171,11 @@ void AnalogLoopbackThread(void* pData)
 int main(void)
 /*lint -restore Enable MISRA rule (6.3) checking. */
 {
+  /* Write your local variable definition here */
+
+  /*** Processor Expert internal initialization. DON'T REMOVE THIS CODE!!! ***/
+  PE_low_level_init();
+  /*** End of Processor Expert internal initialization.                    ***/
   OS_ERROR error;
 
   // Initialise low-level clocks etc using Processor Expert code
