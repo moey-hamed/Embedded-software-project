@@ -26,8 +26,8 @@ typedef struct
   uint16_t End; 		/*!< The index of the next available empty position in the FIFO */
   uint16_t volatile NbBytes;	/*!< The number of bytes currently stored in the FIFO */
   uint8_t Buffer[FIFO_SIZE];	/*!< The actual array of bytes to store the data */
-  OS_ECB* SpaceSem;             /*!< Semaphore to access the FIFO space available to put */
-  OS_ECB* AvailableSem;         /*!< Semaphore to access the FIFO available items to get */
+  OS_ECB* NotFullSemaphore;   /*!< Semaphore to */
+  OS_ECB* NotEmptySemaphore;  /*!< Semaphore to access the FIFO available items to get */
 } TFIFO;
 
 /*! @brief Initialize the FIFO before first use.
