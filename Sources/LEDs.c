@@ -6,7 +6,6 @@
  *  This contains the functions for operating the LEDs.
  *
  *  @author Mohamed Hamed 12919508
- *  @author Yupeng Guo    99178434
  *  @date 2019-04-10
  */
 
