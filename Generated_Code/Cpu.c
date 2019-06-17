@@ -8,7 +8,7 @@
 **     Repository  : Kinetis
 **     Datasheet   : K70P256M150SF3RM, Rev. 2, Dec 2011
 **     Compiler    : GNU C Compiler
-**     Date/Time   : 2019-06-11, 21:14, # CodeGen: 0
+**     Date/Time   : 2015-09-11, 22:17, # CodeGen: 0
 **     Abstract    :
 **
 **     Settings    :
@@ -336,7 +336,6 @@
 #include "PE_Error.h"
 #include "PE_Const.h"
 #include "IO_Map.h"
-#include "Events.h"
 #include "Cpu.h"
 
 #ifdef __cplusplus
@@ -421,8 +420,10 @@ void __init_hardware(void)
                 SIM_CLKDIV1_OUTDIV2(0x01) |
                 SIM_CLKDIV1_OUTDIV3(0x03) |
                 SIM_CLKDIV1_OUTDIV4(0x03); /* Set the system prescalers to safe value */
-  /* SIM_SCGC5: PORTA=1 */
-  SIM_SCGC5 |= SIM_SCGC5_PORTA_MASK;   /* Enable clock gate for ports to enable pin routing */
+  /* SIM_SCGC5: PORTE=1,PORTC=1,PORTA=1 */
+  SIM_SCGC5 |= SIM_SCGC5_PORTE_MASK |
+               SIM_SCGC5_PORTC_MASK |
+               SIM_SCGC5_PORTA_MASK;   /* Enable clock gate for ports to enable pin routing */
   if ((PMC_REGSC & PMC_REGSC_ACKISO_MASK) != 0x0U) {
     /* PMC_REGSC: ACKISO=1 */
     PMC_REGSC |= PMC_REGSC_ACKISO_MASK; /* Release IO pads after wakeup from VLLS mode. */

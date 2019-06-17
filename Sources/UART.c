@@ -18,14 +18,11 @@
 
 /****************************************GLOBAL VARS*****************************************************/
 #define THREAD_STACK_SIZE 100
-
-TFIFO TFIFOx;
-TFIFO RFIFOx;
-
 // Prototypes
 static void ReceiveThread(void* pData);
 static void TransmitThread(void* pData);
-
+TFIFO TFIFOx;
+TFIFO RFIFOx;
 static uint32_t TransmitThreadStack[THREAD_STACK_SIZE] __attribute__ ((aligned(0x08))); /*!< The stack for the transmit thread. */
 static uint32_t ReceiveThreadStack[THREAD_STACK_SIZE] __attribute__ ((aligned(0x08))); /*!< The stack for the receive thread */
 static OS_ECB *TransmitSemaphore; /*!< Binary semaphore for signaling that data transmission */
@@ -82,15 +79,15 @@ bool UART_Init(const uint32_t baudRate, const uint32_t moduleClk)
 
   UART2_C2 &= ~UART_C2_TIE_MASK;  //Transmission complete interrupt enable
   UART2_C2 |= UART_C2_RIE_MASK;   //Enable RDRF interrupt
-  
+
   UART2_C2 |= UART_C2_TE_MASK;		//Enables UART transmitter
   UART2_C2 |= UART_C2_RE_MASK;		//Enables UART receiver
 
   NVICICPR1 = NVIC_ICPR_CLRPEND(1 << (49 % 32)); //clear any pending interrupts on UART2
   NVICISER1 = NVIC_ISER_SETENA(1 << (49 % 32));  //Enable interrupt on UART2
-  
+
   FIFO_Init(&RFIFOx); // Initialize receiver FIFO
-  
+
   FIFO_Init(&TFIFOx); // Initialize transmitter FIFO
 
   ReceiveSemaphore = OS_SemaphoreCreate(0); // Receive semaphore initialized to 0
@@ -105,6 +102,7 @@ bool UART_Init(const uint32_t baudRate, const uint32_t moduleClk)
                           NULL,
                           &TransmitThreadStack[THREAD_STACK_SIZE - 1],
                           2);
+
   return true;
 }
 
@@ -118,36 +116,34 @@ bool UART_InChar(uint8_t* const dataPtr)
 
 bool UART_OutChar(const uint8_t data)
 {
-  EnterCritical();
   bool success;
-  
-  UART2_C2 &= ~UART_C2_TIE_MASK;
+
+  //UART2_C2 &= ~UART_C2_TIE_MASK;
   success = FIFO_Put(&TFIFOx, data);
   UART2_C2 |= UART_C2_TIE_MASK;
-  
-  ExitCritical();
+
   //Place data to the transmit FIFO
   return success;
 }
 
- /*! @brief Thread that looks after transmitting data.
+/*! @brief Thread that looks after transmitting data.
   *
   *  @param pData Thread parameter.
   *  @note Assumes that semaphores are created and communicate properly.
   */
- void TransmitThread(void *data)
+ static void TransmitThread(void *data)
  {
    for (;;)
    {
      OS_SemaphoreWait(TransmitSemaphore, 0); // Wait for transmit semaphore to signal
-	   if (UART2_S1 & UART_S1_TDRE_MASK) // Clear TDRE flag by reading it
-	   {
-	     FIFO_Get(&TFIFOx,(uint8_t* )&UART2_D);
-	     UART2_C2 |= UART_C2_TIE_MASK; // Re-enable transmission interrupt
-	   }
+     if (UART2_S1 & UART_S1_TDRE_MASK) // Clear TDRE flag by reading it
+     {
+       FIFO_Get(&TFIFOx,(uint8_t* )&UART2_D);
+       UART2_C2 |= UART_C2_TIE_MASK; // Re-enable transmission interrupt
+     }
     }
  }
- 
+
 /*! @brief Thread that looks after receiving data.
  *
  *  @param pData Thread parameter.
@@ -162,7 +158,6 @@ static void ReceiveThread(void* pData)
     UART2_C2 |= UART_C2_RIE_MASK; // Re-enable receive interrupt
   }
 }
-
 
  void __attribute__ ((interrupt)) UART_ISR(void)
 {

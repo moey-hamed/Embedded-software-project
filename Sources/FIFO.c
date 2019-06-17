@@ -19,7 +19,7 @@
 
 bool FIFO_Init(TFIFO * const fifo)
 {
-
+  OS_DisableInterrupts();
   // Initialize start index = 0
   fifo->Start = 0;
 
@@ -34,13 +34,15 @@ bool FIFO_Init(TFIFO * const fifo)
 
   //Create a Semaphore to wait for space available
   fifo->NotEmptySemaphore = OS_SemaphoreCreate(0);
+  OS_EnableInterrupts();
   return true;
+
 }
 
 
 bool FIFO_Put(TFIFO * const fifo, const uint8_t data)
 {
-
+  OS_DisableInterrupts();
   // Check if there is enough space in buffer
   if (fifo->NbBytes == FIFO_SIZE)
   {
@@ -55,19 +57,21 @@ bool FIFO_Put(TFIFO * const fifo, const uint8_t data)
 
     //If the FIFO is full, reset
   if (fifo->End == FIFO_SIZE - 1)
-	{
-	  fifo->End = 0;
-	}
+  {
+    fifo->End = 0;
+  }
 
   OS_SemaphoreSignal(fifo->NotEmptySemaphore);   // Signal that there is available space
+  OS_EnableInterrupts();
   return true;
-
   }
+
 }
 
 
 bool FIFO_Get(TFIFO * const fifo, uint8_t * const dataPtr)
 {
+  OS_DisableInterrupts();
   //Check whether there is data in the buffer or not
   if(fifo->NbBytes == 0) //No data in the buffer
   {
@@ -76,18 +80,19 @@ bool FIFO_Get(TFIFO * const fifo, uint8_t * const dataPtr)
 
   else //There is already some data in buffer
   {
-	 *dataPtr = fifo->Buffer[fifo->Start];    //Store data in buffer
-	 fifo->Start++;                           //increase start index
-	 fifo->NbBytes--;                         //decrease the number of bytes in FIFO
+   *dataPtr = fifo->Buffer[fifo->Start];    //Store data in buffer
+   fifo->Start++;                           //increase start index
+   fifo->NbBytes--;                         //decrease the number of bytes in FIFO
   if (fifo->Start == FIFO_SIZE - 1)
   {
-	  fifo->Start = 0;
+    fifo->Start = 0;
   }
 
   OS_SemaphoreSignal(fifo->NotFullSemaphore); // Signal saying FIFO is not full
 
+  OS_EnableInterrupts();
   return true;
 
   }
-}
 
+}

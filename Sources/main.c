@@ -28,7 +28,6 @@
 
 // CPU module - contains low level hardware initialization routines
 #include "Cpu.h"
-#include "Events.h"
 #include "PE_Types.h"
 #include "PE_Error.h"
 #include "PE_Const.h"
@@ -46,14 +45,12 @@
 #include "analog.h"
 /****************************************GLOBAL VARS*****************************************************/
 TPacket Packet;
-
 const uint8_t PACKET_ACK_MASK = 0x80u; //Used to mask out the Acknowledgment bit
 const uint32_t baudRate = 115200;     //Baudrate set to 115200
 const uint32_t moduleClk = CPU_BUS_CLK_HZ; //set teh moduleclock to CPU clock
 
 static volatile uint16union_t * NvTowerNb;   // The Tower's Number
 static volatile uint16union_t * NvTowerMode; // The Tower's Mode
-
 /****************************************PRIVATE FUNCTION DECLARATION***********************************/
 static bool HandlePacket(void);
 static bool HandleStartup(void);
@@ -62,7 +59,8 @@ static bool HandleTowerNumber(void);
 static bool HandleTowerMode(void);
 static bool InitializeComponents (void);
 static void AllocateAndSet(volatile uint16union_t ** const addressPtr, uint16_t const dataIfEmpty);
-
+static void PacketThread(void* pData);
+static void InitModulesThread(void* pData);
 // ----------------------------------------
 // Thread set up
 // ----------------------------------------
@@ -73,12 +71,13 @@ static void AllocateAndSet(volatile uint16union_t ** const addressPtr, uint16_t 
 // Thread stacks
 OS_THREAD_STACK(InitModulesThreadStack, THREAD_STACK_SIZE); /*!< The stack for the LED Init thread. */
 static uint32_t AnalogThreadStacks[NB_ANALOG_CHANNELS][THREAD_STACK_SIZE] __attribute__ ((aligned(0x08)));
+OS_THREAD_STACK(PacketThreadStack , THREAD_STACK_SIZE); /*!< The stack for the LED Init thread. */
 
 // ----------------------------------------
 // Thread priorities
 // 0 = highest priority
 // ----------------------------------------
-const uint8_t ANALOG_THREAD_PRIORITIES[NB_ANALOG_CHANNELS] = {1, 2};
+const uint8_t ANALOG_THREAD_PRIORITIES[NB_ANALOG_CHANNELS] = {3, 4};
 
 /*! @brief Data structure used to pass Analog configuration to a user thread
  *
@@ -376,29 +375,41 @@ void __attribute__ ((interrupt)) LPTimer_ISR(void)
  */
 static void InitModulesThread(void* pData)
 {
+  OS_DisableInterrupts();
   // Analog
   (void)Analog_Init(CPU_BUS_CLK_HZ);
-
   // Generate the global analog semaphores
   for (uint8_t analogNb = 0; analogNb < NB_ANALOG_CHANNELS; analogNb++)
     AnalogThreadData[analogNb].semaphore = OS_SemaphoreCreate(0);
 
+  // Initialse the components on the Tower Board (UART, Flash, LEDs etc.)
+    if (InitializeComponents())
+      {
+        // If Tower Board is successful in starting up (all peripherals initialised), then the orange LED should be turned on.
+        LEDs_On(LED_ORANGE);
+      }
+
+    // Allocate flash memory for Tower Mode and Number, and set defaults if empty
+      AllocateAndSet(&NvTowerMode, 1); // default to 1 as per spec
+      AllocateAndSet(&NvTowerNb, 9508); // default to last 4 digits of student number as per spec
+
   // Initialise the low power timer to tick every 10 ms
   LPTMRInit(10);
 
-  // Initialse the components on the Tower Board (UART, Flash, LEDs etc.)
-   if (InitializeComponents())
-     {
-       // If Tower Board is successful in starting up (all peripherals initialised), then the orange LED should be turned on.
-       LEDs_On(LED_ORANGE);
-     }
-
-   // Allocate flash memory for Tower Mode and Number, and set defaults if empty
-     AllocateAndSet(&NvTowerMode, 1); // default to 1 as per spec
-     AllocateAndSet(&NvTowerNb, 9508); // default to last 4 digits of student number as per spec
-
   // We only do this once - therefore delete this thread
+  OS_EnableInterrupts();
+
+  HandleStartup();
+
   OS_ThreadDelete(OS_PRIORITY_SELF);
+}
+static void PacketThread(void* pData)
+{
+  for (;;)
+  {
+    if (Packet_Get()) // Check for received packets from PC
+     HandlePacket(); // Handle received packet
+  }
 }
 
 /*! @brief Samples a value on an ADC channel and sends it to the corresponding DAC channel.
@@ -431,18 +442,22 @@ int main(void)
   PE_low_level_init();
   /*** End of Processor Expert internal initialization.                    ***/
   OS_ERROR error;
-
   // Initialise low-level clocks etc using Processor Expert code
   PE_low_level_init();
 
   // Initialize the RTOS
-  OS_Init(CPU_CORE_CLK_HZ, true);
+  OS_Init(CPU_CORE_CLK_HZ, false);
 
   // Create module initialisation thread
   error = OS_ThreadCreate(InitModulesThread,
                           NULL,
                           &InitModulesThreadStack[THREAD_STACK_SIZE - 1],
                           0); // Highest priority
+
+  error = OS_ThreadCreate(PacketThread,
+                          NULL,
+                          &PacketThreadStack[THREAD_STACK_SIZE - 1],
+                          5); // Highest priority
 
 
 
@@ -454,7 +469,6 @@ int main(void)
                             &AnalogThreadStacks[threadNb][THREAD_STACK_SIZE - 1],
                             ANALOG_THREAD_PRIORITIES[threadNb]);
   }
-
   // Start multithreading - never returns!
   OS_Start();
 }

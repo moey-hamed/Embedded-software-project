@@ -14,10 +14,9 @@
 #include "types.h"
 #include "PE_Types.h"
 #include "Cpu.h"
-
+#include "OS.h"
 /****************************************GLOBAL VARS*****************************************************/
 uint8_t packet_position = 0;
-
 /****************************************PRIVATE FUNCTION DECLARATION***********************************/
 static bool IsChecksumValid(void);
 void ShiftPacket(void);
@@ -33,7 +32,6 @@ bool Packet_Init(const uint32_t baudRate, const uint32_t moduleClk)
 
 bool Packet_Get(void)
 {
-  EnterCritical();
   uint8_t data;
 
   //Checks whether there is data in the receive FIFO and stores it the address pointed by Data
@@ -84,15 +82,14 @@ bool Packet_Get(void)
 	  break;
       }
   }
-  ExitCritical();
   return false;
 }
 
 bool Packet_Put(const uint8_t command, const uint8_t parameter1, const uint8_t parameter2, const uint8_t parameter3)
 {
+  OS_DisableInterrupts();
   // Calculate check sum
   uint8_t checkSum = command ^ parameter1 ^ parameter2 ^ parameter3;
-  EnterCritical();
   if (!UART_OutChar(command))
     return false;		    //Place Command byte in TxFIFO
   if (!UART_OutChar(parameter1))
@@ -103,10 +100,8 @@ bool Packet_Put(const uint8_t command, const uint8_t parameter1, const uint8_t p
     return false;			//Place Parameter3 byte in TxFIFO
   if (!UART_OutChar(checkSum))
     return false;	//Place Checksum byte in TxFIFO
-  ExitCritical();
-
   return true;
-
+  OS_EnableInterrupts();
 }
 /****************************************PRIVATE FUNCTION DEFINITION***************************************
 /*! @brief Determine whether the value of the checksum we calculated is equal to the value carried by its own packet
