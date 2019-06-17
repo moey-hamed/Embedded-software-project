@@ -18,9 +18,6 @@
 
 /****************************************GLOBAL VARS*****************************************************/
 #define THREAD_STACK_SIZE 100
-// Prototypes
-static void ReceiveThread(void* pData);
-static void TransmitThread(void* pData);
 TFIFO TFIFOx;
 TFIFO RFIFOx;
 static uint32_t TransmitThreadStack[THREAD_STACK_SIZE] __attribute__ ((aligned(0x08))); /*!< The stack for the transmit thread. */
@@ -93,16 +90,6 @@ bool UART_Init(const uint32_t baudRate, const uint32_t moduleClk)
   ReceiveSemaphore = OS_SemaphoreCreate(0); // Receive semaphore initialized to 0
   TransmitSemaphore = OS_SemaphoreCreate(0); // Transmit semaphore initialized to 0
 
-  error = OS_ThreadCreate(ReceiveThread, // 2nd highest priority thread
-                          NULL,
-                          &ReceiveThreadStack[THREAD_STACK_SIZE - 1],
-                          1);
-
-  error = OS_ThreadCreate(TransmitThread, // 3rd highest priority thread
-                          NULL,
-                          &TransmitThreadStack[THREAD_STACK_SIZE - 1],
-                          2);
-
   return true;
 }
 
@@ -131,7 +118,7 @@ bool UART_OutChar(const uint8_t data)
   *  @param pData Thread parameter.
   *  @note Assumes that semaphores are created and communicate properly.
   */
- static void TransmitThread(void *data)
+void TransmitThread(void *data)
  {
    for (;;)
    {
@@ -149,7 +136,7 @@ bool UART_OutChar(const uint8_t data)
  *  @param pData Thread parameter.
  *  @note Assumes that semaphores are created and communicate properly.
  */
-static void ReceiveThread(void* pData)
+void ReceiveThread(void* pData)
 {
   for (;;)
   {

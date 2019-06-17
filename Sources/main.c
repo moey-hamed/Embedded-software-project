@@ -59,7 +59,7 @@ static bool HandleTowerNumber(void);
 static bool HandleTowerMode(void);
 static bool InitializeComponents (void);
 static void AllocateAndSet(volatile uint16union_t ** const addressPtr, uint16_t const dataIfEmpty);
-static void PacketThread(void* pData);
+void PacketThread(void* pData);
 static void InitModulesThread(void* pData);
 // ----------------------------------------
 // Thread set up
@@ -67,11 +67,13 @@ static void InitModulesThread(void* pData);
 // Arbitrary thread stack size - big enough for stacking of interrupts and OS use.
 #define THREAD_STACK_SIZE 100
 #define NB_ANALOG_CHANNELS 2
-
+OS_ECB* PacketSemaphore;
 // Thread stacks
 OS_THREAD_STACK(InitModulesThreadStack, THREAD_STACK_SIZE); /*!< The stack for the LED Init thread. */
 static uint32_t AnalogThreadStacks[NB_ANALOG_CHANNELS][THREAD_STACK_SIZE] __attribute__ ((aligned(0x08)));
-OS_THREAD_STACK(PacketThreadStack , THREAD_STACK_SIZE); /*!< The stack for the LED Init thread. */
+OS_THREAD_STACK(PacketThreadStack , THREAD_STACK_SIZE);
+OS_THREAD_STACK(TransmitThreadStack , THREAD_STACK_SIZE);
+OS_THREAD_STACK(ReceiveThreadStack , THREAD_STACK_SIZE);
 
 // ----------------------------------------
 // Thread priorities
@@ -398,13 +400,14 @@ static void InitModulesThread(void* pData)
 
   // We only do this once - therefore delete this thread
   OS_EnableInterrupts();
-
+  OS_SemaphoreSignal(PacketSemaphore);
   HandleStartup();
 
   OS_ThreadDelete(OS_PRIORITY_SELF);
 }
-static void PacketThread(void* pData)
+ void PacketThread(void* data)
 {
+  OS_SemaphoreWait(PacketSemaphore, 0);
   for (;;)
   {
     if (Packet_Get()) // Check for received packets from PC
@@ -453,13 +456,15 @@ int main(void)
                           NULL,
                           &InitModulesThreadStack[THREAD_STACK_SIZE - 1],
                           0); // Highest priority
-
-  error = OS_ThreadCreate(PacketThread,
+  error = OS_ThreadCreate(ReceiveThread, // 2nd highest priority thread
                           NULL,
-                          &PacketThreadStack[THREAD_STACK_SIZE - 1],
-                          5); // Highest priority
+                          &ReceiveThreadStack[THREAD_STACK_SIZE - 1],
+                          1);
 
-
+  error = OS_ThreadCreate(TransmitThread, // 3rd highest priority thread
+                          NULL,
+                          &TransmitThreadStack[THREAD_STACK_SIZE - 1],
+                          2);
 
   // Create threads for 2 analog loopback channels
   for (uint8_t threadNb = 0; threadNb < NB_ANALOG_CHANNELS; threadNb++)
@@ -468,7 +473,16 @@ int main(void)
                             &AnalogThreadData[threadNb],
                             &AnalogThreadStacks[threadNb][THREAD_STACK_SIZE - 1],
                             ANALOG_THREAD_PRIORITIES[threadNb]);
+
   }
+
+  error = OS_ThreadCreate(PacketThread,
+                          NULL,
+                          &PacketThreadStack[THREAD_STACK_SIZE - 1],
+                          5); // Highest priority
+
+
+  PacketSemaphore = OS_SemaphoreCreate(0);
   // Start multithreading - never returns!
   OS_Start();
 }

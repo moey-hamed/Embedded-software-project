@@ -13,7 +13,9 @@
 
 // new types
 #include "types.h"
-
+// Prototypes
+void ReceiveThread(void* pData);
+void TransmitThread(void* pData);
 /*! @brief Sets up the UART interface before first use.
  *
  *  @param baudRate The desired baud rate in bits/sec.

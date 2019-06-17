@@ -100,8 +100,9 @@ bool Packet_Put(const uint8_t command, const uint8_t parameter1, const uint8_t p
     return false;			//Place Parameter3 byte in TxFIFO
   if (!UART_OutChar(checkSum))
     return false;	//Place Checksum byte in TxFIFO
-  return true;
   OS_EnableInterrupts();
+  return true;
+
 }
 /****************************************PRIVATE FUNCTION DEFINITION***************************************
 /*! @brief Determine whether the value of the checksum we calculated is equal to the value carried by its own packet
