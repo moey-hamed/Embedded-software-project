@@ -33,12 +33,35 @@
 #include "PE_Error.h"
 #include "PE_Const.h"
 #include "IO_Map.h"
+#include "Packet.h"
+#include "UART.h"
+#include "FIFO.h"
+#include "LEDs.h"
+#include "Flash.h"
 
 // Simple OS
 #include "OS.h"
 
 // Analog functions
 #include "analog.h"
+/****************************************GLOBAL VARS*****************************************************/
+TPacket Packet;
+
+const uint8_t PACKET_ACK_MASK = 0x80u; //Used to mask out the Acknowledgment bit
+const uint32_t baudRate = 115200;     //Baudrate set to 115200
+const uint32_t moduleClk = CPU_BUS_CLK_HZ; //set teh moduleclock to CPU clock
+
+static volatile uint16union_t * NvTowerNb;   // The Tower's Number
+static volatile uint16union_t * NvTowerMode; // The Tower's Mode
+
+/****************************************PRIVATE FUNCTION DECLARATION***********************************/
+static bool HandlePacket(void);
+static bool HandleStartup(void);
+static bool HandleSpecial(void);
+static bool HandleTowerNumber(void);
+static bool HandleTowerMode(void);
+static bool InitializeComponents (void);
+static void AllocateAndSet(volatile uint16union_t ** const addressPtr, uint16_t const dataIfEmpty);
 
 // ----------------------------------------
 // Thread set up
@@ -80,6 +103,226 @@ static TAnalogThreadData AnalogThreadData[NB_ANALOG_CHANNELS] =
     .channelNb = 1
   }
 };
+/****************************************PRIVATE FUNCTION DEFINITION***********************************/
+/*! @brief Handles the received and verified packet based on its command byte.
+ *
+ *  @return bool - TRUE if the packet was successfully handled.
+ */
+static bool HandlePacket(void)
+{
+  bool error = false;
+
+  // Switch on Packet Command after zeroing acknowledgment bit
+  switch (Packet_Command & ~PACKET_ACK_MASK)
+  {
+    //Respond to a Startup Packet
+    case PC_GET_STARTUP:
+      if (HandleStartup())
+  {
+    error = true;
+  }
+      break;
+
+    //Respond to a Special Packet
+    case PC_GET_VERSION:
+      if (HandleSpecial())
+      {
+    error = true;
+      }
+      break;
+
+
+    //Respond to a Get/Set Tower Number Packer
+    case PC_TOWER_NUMBER:
+      if(HandleTowerNumber());
+      {
+    error = true;
+      }
+      break;
+    //Respond to a Tower Mode Packet
+    case PC_TOWER_MODE:
+      if (HandleTowerMode());
+      {
+    error = true;
+      }
+      break;
+
+    default:      // Received invalid or unimplemented packet
+      break;
+  }
+
+  //Check whether the Acknowledgment bit is set
+  if (Packet_Command & PACKET_ACK_MASK)
+    {
+      //Create a new command response packet
+      uint8_t maskedPacket = 0;
+
+      if (error == true)
+  {
+    //If there are errors, the Acknowledgment bit should be 0
+    maskedPacket = Packet_Command & ~PACKET_ACK_MASK;
+  }
+      else
+  {
+    //If there are no errors, the Acknowledgment bit should be 1
+    maskedPacket = Packet_Command | PACKET_ACK_MASK;
+  }
+      //Place the Acknowledgment Packet in the TxFIFO
+      Packet_Put(maskedPacket, Packet_Parameter1, Packet_Parameter2, Packet_Parameter3);
+    }
+}
+
+/*! @brief Handles the "Get startup values" packet
+ *
+ * Command: 0x04
+ * Parameter 1: 0
+ * Parameter 2: 0
+ * Parameter 3: 0
+ *  @return bool - TRUE if the packet was successfully handled.
+ */
+static bool HandleStartup(void)
+{
+  // Verify that the received command was for "Get Startup"
+  if (Packet_Parameter1 == PC_GET_STARTUP_PAR1 && Packet_Parameter2 == PC_GET_STARTUP_PAR2 && Packet_Parameter3 == PC_GET_STARTUP_PAR3)
+    {
+      // Transmit the four required packets to the PC
+      (void) Packet_Put(TOWER_STARTUP, TOWER_STARTUP_PAR1, TOWER_STARTUP_PAR2,TOWER_STARTUP_PAR3);
+      (void) Packet_Put(TOWER_VERSION, TOWER_VERSION_PAR1, TOWER_VERSION_PAR2, TOWER_VERSION_PAR3);
+      (void) Packet_Put(TOWER_NUMBER, TOWER_NUMBER_PAR1, NvTowerNb->s.Lo, NvTowerNb->s.Hi);;
+      (void) Packet_Put(TOWER_MODE, TOWER_MODE_PAR1, NvTowerMode->s.Lo, NvTowerMode->s.Hi);;
+      return true;
+    }
+  return false;
+}
+
+
+/*! @brief Handles the Special Command (currently only Get version implemented)
+ *
+ * Sends the version number to the PC.
+ *
+ * Command: 0x09
+ * Parameter 1: d
+ * Parameter 2: j
+ * Parameter 3: CR
+ *
+ *  @return bool - TRUE if the packet was successfully handled.
+ */
+static bool HandleSpecial(void)
+{
+  // Verify that the received command was for "Get version"
+  if (Packet_Parameter1 == PC_GET_VERSION_PAR1 && Packet_Parameter2 == PC_GET_VERSION_PAR2)
+    {
+      // Transmit the version number to the PC
+      (void) Packet_Put(TOWER_VERSION, TOWER_VERSION_PAR1, TOWER_VERSION_PAR2, TOWER_VERSION_PAR3);
+      return true;
+    }
+
+  // Invalid command
+  return false;
+}
+
+/*! @brief Handles the Tower Number PC To Tower Command
+ *
+ * Command: 0x0B
+ * Parameter 1: 1 = get Tower number
+ *              2 = set Tower number
+ * Parameter 2: LSB for set, 0 for a get
+ * Parameter 3: MSB for set, 0 for a get
+ * @note The Tower number is an unsigned 16-bit number
+ *
+ *  @return bool - TRUE if the packet was successfully handled.
+ */
+static bool HandleTowerNumber(void)
+{
+  //Verify that the received command was for "Tower Number"
+  if (Packet_Parameter1 == PC_TOWER_NUMBER_PAR1_GET && Packet_Parameter23 == PC_TOWER_NUMBER_PAR2_GET && Packet_Parameter23 == PC_TOWER_NUMBER_PAR2_GET)
+    {
+      // Transmit the Tower Number to the PC
+      (void) Packet_Put(TOWER_NUMBER, TOWER_NUMBER_PAR1, NvTowerNb->s.Lo, NvTowerNb->s.Hi);;
+      return true;
+    }
+
+  //Verify that the received command was for setting  tower number
+  else if (Packet_Parameter1 == PC_TOWER_NUMBER_PAR1_SET)
+    {
+     //Write the tower number we set
+      return Flash_Write16((uint16_t *) NvTowerNb, Packet_Parameter23);
+    }
+
+  // Invalid packet, likely called get with non zeroed parameter 2/3
+  return false;
+}
+
+
+/*! @brief Handles the "Tower Number" packet
+ *
+ * Command: 0x0D
+ * Parameter 1:  1 = get Tower mode
+ *               2 = set Tower mode
+ * Parameter 2: LSB for set, 0 for a get
+ * Parameter 3: MSB for set, 0 for a get
+ *
+ * Response: None
+ *
+ * @return bool - TRUE if the packet was successfully handled.
+ */
+static bool HandleTowerMode(void)
+{
+  //Verify that the received command was for "Tower Mode"
+  if (Packet_Parameter1 == PC_TOWER_MODE_PAR1_GET && Packet_Parameter2 == PC_TOWER_MODE_PAR2_GET&& Packet_Parameter3 == PC_TOWER_MODE_PAR3_GET)
+    {
+      (void) Packet_Put(TOWER_MODE, TOWER_MODE_PAR1, NvTowerMode->s.Lo, NvTowerMode->s.Hi);;
+      return true;
+    }
+ //Verify that the received command was for setting Tower Mode
+  else if (Packet_Parameter1 == PC_TOWER_MODE_PAR1_SET)
+    {
+     //Write the tower mode we set
+      return Flash_Write16((uint16_t *)NvTowerMode, Packet_Parameter23);
+    }
+
+  return false;
+}
+
+
+/*! @brief Initialises the Packet, Flash and LEDs modules.
+ *
+ * @return bool - true if all modules were successfully initialised
+ */
+
+static bool InitializeComponents (void)
+{
+  return Packet_Init(baudRate, moduleClk)
+         & Flash_Init()
+         & LEDs_Init();
+}
+
+
+
+/*! @brief Allocates a block of Flash Memory and sets a default if the block is empty
+ *
+ *  Maps an addressPtr to a block of FLASH memory of the given size.
+ *  If the block of memory is empty a default is set.
+ *
+ *  @param addressPtr Pointer to the address to be mapped to memory
+ *  @param dataIfEmpty The data that should be set to the block if empty
+ */
+static void AllocateAndSet(volatile uint16union_t ** const addressPtr, uint16_t const dataIfEmpty)
+{
+  // Allocate block in memory for the passed in size
+  bool allocatedAddress = Flash_AllocateVar((volatile void **)addressPtr, sizeof(**addressPtr));
+
+  if (allocatedAddress && (*addressPtr)->l == 0xFFFF)
+    {
+      // Memory "empty", set default
+      Flash_Write16((uint16 *)*addressPtr, dataIfEmpty);
+    }
+}
+
+/*! @brief The main entry point into the program
+ *
+ *  @return int - Hopefully never (embedded software never ends!)
+ */
 
 void LPTMRInit(const uint16_t count)
 {
@@ -143,6 +386,17 @@ static void InitModulesThread(void* pData)
   // Initialise the low power timer to tick every 10 ms
   LPTMRInit(10);
 
+  // Initialse the components on the Tower Board (UART, Flash, LEDs etc.)
+   if (InitializeComponents())
+     {
+       // If Tower Board is successful in starting up (all peripherals initialised), then the orange LED should be turned on.
+       LEDs_On(LED_ORANGE);
+     }
+
+   // Allocate flash memory for Tower Mode and Number, and set defaults if empty
+     AllocateAndSet(&NvTowerMode, 1); // default to 1 as per spec
+     AllocateAndSet(&NvTowerNb, 9508); // default to last 4 digits of student number as per spec
+
   // We only do this once - therefore delete this thread
   OS_ThreadDelete(OS_PRIORITY_SELF);
 }
@@ -189,6 +443,8 @@ int main(void)
                           NULL,
                           &InitModulesThreadStack[THREAD_STACK_SIZE - 1],
                           0); // Highest priority
+
+
 
   // Create threads for 2 analog loopback channels
   for (uint8_t threadNb = 0; threadNb < NB_ANALOG_CHANNELS; threadNb++)

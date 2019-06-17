@@ -60,6 +60,83 @@ typedef union
 #define Packet_Checksum    Packet.packetStruct.checksum
 
 extern TPacket Packet;
+/******************Commands:PC to tower*********************************/
+
+//0x04 Get startup values
+#define PC_GET_STARTUP 0x04
+#define PC_GET_STARTUP_PAR1 0
+#define PC_GET_STARTUP_PAR2 0
+#define PC_GET_STARTUP_PAR3 0
+
+//0x07 Program byte
+#define PC_PROGRAM_BYTE 0x07
+#define PC_PROGRAM_BYTE_PAR1
+#define PC_PROGRAM_BYTE_PAR2 0
+#define PC_PROGRAM_BYTE_PAR3
+
+//0X07 Read byte
+#define PC_READ_BYTE 0x08
+#define PC_READ_BYTE_PAR1
+#define PC_READ_BYTE_PAR2 0
+#define PC_READ_BYTE_PAR3 0
+
+//0x09 Get version
+#define PC_GET_VERSION 0x09
+#define PC_GET_VERSION_PAR1 'v'
+#define PC_GET_VERSION_PAR2 'x'
+#define PC_GET_VERSION_PAR3 'CR'
+
+//0x0B Tower Number
+#define PC_TOWER_NUMBER 0x0B
+#define PC_TOWER_NUMBER_PAR1_GET 1
+#define PC_TOWER_NUMBER_PAR1_SET 2
+#define PC_TOWER_NUMBER_PAR2_GET 0
+//#define TOWER_NUMBER_PAR2_SET LSB
+#define PC_TOWER_NUMBER_PAR3_GET 0
+//#define TOWER_NUMBER_PAR3_SET MSB
+
+//0x0D Tower Mode
+#define PC_TOWER_MODE 0x0D
+#define PC_TOWER_MODE_PAR1_GET 1
+#define PC_TOWER_MODE_PAR1_SET 2
+#define PC_TOWER_MODE_PAR2_GET 0
+//#define TOWER_NUMBER_PAR2_SET LSB
+#define PC_TOWER_MODE_PAR3_GET 0
+//#define TOWER_NUMBER_PAR3_SET MSB
+
+/******************Commands: Tower to PC *********************************/
+//0x04 Tower startup
+#define TOWER_STARTUP 0x04
+#define TOWER_STARTUP_PAR1 0
+#define TOWER_STARTUP_PAR2 0
+#define TOWER_STARTUP_PAR3 0
+
+//0x08 Read bit
+#define TOWER_READ_BIT 0x08
+#define TOWER_READ_BIT_PAR1
+#define TOWER_READ_BIT_PAR2 0
+#define TOWER_READ_BIT_PAR3
+
+//0x09 Special-Tower version
+#define TOWER_VERSION 0x09
+#define TOWER_VERSION_PAR1 'v'
+#define TOWER_VERSION_PAR2 1
+#define TOWER_VERSION_PAR3 0
+
+//0x0B Tower number
+#define TOWER_NUMBER 0x0B
+#define TOWER_NUMBER_PAR1 1
+#define TOWER_NUMBER_PAR2
+#define TOWER_NUMBER_PAR3
+
+//0x0C Time
+#define PC_TIME 0x0C
+
+//0X0D TOWER Mode
+#define TOWER_MODE 0x0D
+#define TOWER_MODE_PAR1 1
+#define TOWER_MODE_PAR2
+#define TOWER_MODE_PAR3
 
 // Acknowledgment bit mask
 extern const uint8_t PACKET_ACK_MASK;
