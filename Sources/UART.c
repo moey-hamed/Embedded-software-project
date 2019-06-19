@@ -103,12 +103,13 @@ bool UART_InChar(uint8_t* const dataPtr)
 
 bool UART_OutChar(const uint8_t data)
 {
+  EnterCritical();
   bool success;
 
   //UART2_C2 &= ~UART_C2_TIE_MASK;
   success = FIFO_Put(&TFIFOx, data);
   UART2_C2 |= UART_C2_TIE_MASK;
-
+  ExitCritical();
   //Place data to the transmit FIFO
   return success;
 }
