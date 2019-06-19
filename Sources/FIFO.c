@@ -75,7 +75,7 @@ bool FIFO_Get(TFIFO * const fifo, uint8_t * const dataPtr)
   //Check whether there is data in the buffer or not
   if(fifo->NbBytes == 0) //No data in the buffer
   {
-    OS_SemaphoreWait(fifo->NotEmptySemaphore);
+    OS_SemaphoreWait(fifo->NotEmptySemaphore,0);
   }
 
   else //There is already some data in buffer
