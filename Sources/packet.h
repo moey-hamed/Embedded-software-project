@@ -132,7 +132,10 @@ extern TPacket Packet;
 #define TOWER_NUMBER_PAR3
 
 //0x0C Time
-#define PC_TIME 0x0C
+#define CMD_TIME 0x0C
+#define PC_TIME_PAR1_MAX 23
+#define PC_TIME_PAR2_MAX 59
+#define PC_TIME_PAR3_MAX 59
 
 //0X0D TOWER Mode
 #define TOWER_MODE 0x0D

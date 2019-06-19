@@ -37,18 +37,14 @@
 #include "FIFO.h"
 #include "LEDs.h"
 #include "Flash.h"
-
-// Simple OS
 #include "OS.h"
-
-// Analog functions
 #include "analog.h"
 /****************************************GLOBAL VARS*****************************************************/
 TPacket Packet;
 const uint8_t PACKET_ACK_MASK = 0x80u; //Used to mask out the Acknowledgment bit
 const uint32_t baudRate = 115200;     //Baudrate set to 115200
 const uint32_t moduleClk = CPU_BUS_CLK_HZ; //set teh moduleclock to CPU clock
-
+OS_ECB* Update_Clock_Semaphore;
 static volatile uint16union_t * NvTowerNb;   // The Tower's Number
 static volatile uint16union_t * NvTowerMode; // The Tower's Mode
 /****************************************PRIVATE FUNCTION DECLARATION***********************************/
@@ -59,21 +55,23 @@ static bool HandleTowerNumber(void);
 static bool HandleTowerMode(void);
 static bool InitializeComponents (void);
 static void AllocateAndSet(volatile uint16union_t ** const addressPtr, uint16_t const dataIfEmpty);
-void PacketThread(void* pData);
+static void PacketThread(void* pData);
+static bool HandleSetTime(void);
 static void InitModulesThread(void* pData);
+static void RTCThread(void* pData);
 // ----------------------------------------
 // Thread set up
 // ----------------------------------------
 // Arbitrary thread stack size - big enough for stacking of interrupts and OS use.
 #define THREAD_STACK_SIZE 100
 #define NB_ANALOG_CHANNELS 2
-OS_ECB* PacketSemaphore;
 // Thread stacks
 OS_THREAD_STACK(InitModulesThreadStack, THREAD_STACK_SIZE); /*!< The stack for the LED Init thread. */
 static uint32_t AnalogThreadStacks[NB_ANALOG_CHANNELS][THREAD_STACK_SIZE] __attribute__ ((aligned(0x08)));
 OS_THREAD_STACK(PacketThreadStack , THREAD_STACK_SIZE);
 OS_THREAD_STACK(TransmitThreadStack , THREAD_STACK_SIZE);
 OS_THREAD_STACK(ReceiveThreadStack , THREAD_STACK_SIZE);
+
 
 // ----------------------------------------
 // Thread priorities
@@ -147,6 +145,14 @@ static bool HandlePacket(void)
     error = true;
       }
       break;
+      //Respond to a Set Time 0x0C
+        case CMD_TIME:
+          if (HandleSetTime())
+      {
+        error = true;
+      }
+         break;
+
 
     default:      // Received invalid or unimplemented packet
       break;
@@ -221,6 +227,16 @@ static bool HandleSpecial(void)
   // Invalid command
   return false;
 }
+static bool HandleSetTime(void)
+{
+  if ((Packet_Parameter1 > PC_TIME_PAR1_MAX) || (Packet_Parameter2 >= PC_TIME_PAR2_MAX)
+      || (Packet_Parameter3 >= PC_TIME_PAR3_MAX))
+    return false;
+
+  RTC_Set(Packet_Parameter1, Packet_Parameter2, Packet_Parameter3);
+  return true;
+}
+
 
 /*! @brief Handles the Tower Number PC To Tower Command
  *
@@ -400,20 +416,20 @@ static void InitModulesThread(void* pData)
 
   // We only do this once - therefore delete this thread
   OS_EnableInterrupts();
-  OS_SemaphoreSignal(PacketSemaphore);
   HandleStartup();
 
   OS_ThreadDelete(OS_PRIORITY_SELF);
 }
- void PacketThread(void* data)
+
+void PacketThread(void* data)
 {
-  OS_SemaphoreWait(PacketSemaphore, 0);
   for (;;)
   {
     if (Packet_Get()) // Check for received packets from PC
      HandlePacket(); // Handle received packet
   }
 }
+
 
 /*! @brief Samples a value on an ADC channel and sends it to the corresponding DAC channel.
  *
@@ -473,16 +489,15 @@ int main(void)
                             &AnalogThreadData[threadNb],
                             &AnalogThreadStacks[threadNb][THREAD_STACK_SIZE - 1],
                             ANALOG_THREAD_PRIORITIES[threadNb]);
-
   }
+
 
   error = OS_ThreadCreate(PacketThread,
                           NULL,
                           &PacketThreadStack[THREAD_STACK_SIZE - 1],
-                          5); // Highest priority
+                          7);
 
 
-  PacketSemaphore = OS_SemaphoreCreate(0);
   // Start multithreading - never returns!
   OS_Start();
 }
